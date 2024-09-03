@@ -365,7 +365,7 @@ class Joint_reconstruction_and_segmentation_dwi_lesion:
         Dice = 2 * tp / (2 * tp + fn + fp)
         """ Compute f1 score as in isles paper """
         F1 = compute_lesion_f1_score(
-            segmentation_mask.detach().cpu(), output.detach().cpu()
+            segmentation_mask[:, 0].detach().cpu(), output[:, 0].detach().cpu()
         )
 
         im1 = np.asarray(segmentation_mask.detach().cpu()).astype(bool)
@@ -645,9 +645,14 @@ for epoch in range(N_epochs):
         (torch.tensor(mynet.F1) / len(mynet.test_dataloader)).detach().cpu(),
         epoch,
     )
-    writer.add_image("DWI", dwi_input[23][0], global_step=0)
-    writer.add_image("gt", segmentation_mask[23][0], global_step=0)
-    writer.add_image("prediction", output[23][0], global_step=0)
+    writer.add_image("DWI", dwi_input[2][:], global_step=0)
+    writer.add_image("gt", segmentation_mask[2][:], global_step=0)
+    writer.add_image("prediction", output[2][:], global_step=0)
+    writer.add_image(
+        "DWI-DWI_gt",
+        torch.abs(output_adc_2_dwi - dwi_input.float()).detach().cpu()[2],
+        global_step=0,
+    )
 
     writer.close()
 
@@ -728,8 +733,7 @@ for epoch in range(N_epochs):
             mynet.adc_2_dwi_net.state_dict(),
             args.weights_dir + "/" + name_weights_adc2dwi,
         )
-        # torch.save(mynet.segmentation_net.state_dict(),
-        #          "/cephfs/schwab/ML_test/stroke/weights/"+name_weights)
+
         print("saved weights")
 
     if mynet.mean_spec[-1] > mynet.max_mean_spec:
