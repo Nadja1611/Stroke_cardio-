@@ -32,6 +32,7 @@ import os
 from model_utils import define_inputs
 import nibabel as nib
 from dataset import *
+from eval_utils import compute_lesion_f1_score
 import argparse
 from torch.utils.tensorboard import SummaryWriter
 
@@ -188,6 +189,7 @@ class Joint_reconstruction_and_segmentation_dwi_lesion:
 
         self.device = "cuda:0"
         self.Dice = 0
+        self.F1 = 0
         self.F_score = 0
         self.S_score = 0
         self.AP = 0
@@ -198,6 +200,7 @@ class Joint_reconstruction_and_segmentation_dwi_lesion:
         self.mean_dice_isles = []
         self.mean_sens_score = []
         self.mean_fp_score = []
+        self.mean_F1 = []
         self.FP = 0
         self.FN = 0
         self.mean_spec = []
@@ -341,12 +344,12 @@ class Joint_reconstruction_and_segmentation_dwi_lesion:
 
     def tversky(self, tp, fn, fp):
         loss2 = 1 - (
-            (torch.sum(tp) + 0.000001)
+            (torch.sum(tp) + 1e-5)
             / (
                 torch.sum(tp)
                 + self.gamma * torch.sum(fn)
                 + self.delta * torch.sum(fp)
-                + 0.000001
+                + 1e-5
             )
         )
         return loss2
@@ -360,9 +363,11 @@ class Joint_reconstruction_and_segmentation_dwi_lesion:
         Recall = (tp + 0.0001) / (tp + fn + 0.0001)
         Spec = tn / (tn + fp)
         Dice = 2 * tp / (2 * tp + fn + fp)
-        # AP = AP_score(np.asarray(segmentation_mask.detach().cpu()), np.asarray(output.detach().cpu()), 0.5, 0.5)
-        # S_score = Sens_score(np.asarray(segmentation_mask.detach().cpu()), np.asarray(output.detach().cpu()), 0.5, 0.5)
-        # F_score = FP_score(np.asarray(segmentation_mask.detach().cpu()), np.asarray(output.detach().cpu()), 0.5, 0.5)
+        """ Compute f1 score as in isles paper """
+        F1 = compute_lesion_f1_score(
+            segmentation_mask.detach().cpu(), output.detach().cpu()
+        )
+
         im1 = np.asarray(segmentation_mask.detach().cpu()).astype(bool)
         im2 = np.asarray(output.detach().cpu()).astype(bool)
 
@@ -380,13 +385,12 @@ class Joint_reconstruction_and_segmentation_dwi_lesion:
 
         self.Dice_isles += dice_isles
         self.Dice += Dice.detach().cpu()
+        self.F1 += F1
         self.FP += fp.detach().cpu()
         self.FN += fn.detach().cpu()
         self.Recall += Recall
         self.Spec += Spec
-        # self.AP += AP
-        # self.F_score += F_score
-        # self.S_score += S_score
+
         del (fn, fp, tn, tp)
         gc.collect()
 
@@ -414,10 +418,7 @@ class Joint_reconstruction_and_segmentation_dwi_lesion:
             print("bce: " + str(loss1))
             print("dice: " + str(self.tversky(tp, fn, fp)))
             print("sym: " + str(self.symmetry_prior(segmentation_mask, output)))
-        loss = (
-            (self.alpha * loss1) + (1 - self.alpha) * (self.tversky(tp, fn, fp))
-        )  # + 0.0*self.symmetry_prior(segmentation_mask, output)# + self.size_prior(output)
-        # loss = self.tversky(tp,fn,fp
+        loss = (self.alpha * loss1) + (1 - self.alpha) * (self.tversky(tp, fn, fp))
         del (tp, fp, fn, y_true_f, y_pred_f)
         gc.collect()
         return loss
@@ -431,7 +432,7 @@ class Joint_reconstruction_and_segmentation_dwi_lesion:
         loss = torch.sum(
             torch.round(is_lesion_on_slice).unsqueeze(-1).unsqueeze(-1)
             * torch.abs(adc_input - output_dwi_2_adc)
-        ) / (torch.sum((shape[2] ** 2 * torch.sum(is_lesion_on_slice))) + 1e-6)
+        ) / (torch.sum((shape[2] ** 2 * torch.sum(is_lesion_on_slice))) + 1e-5)
         return loss
 
     """'as input, we have the real DWI, the reconstructed DWI,and  the segmentation mask """
@@ -443,7 +444,7 @@ class Joint_reconstruction_and_segmentation_dwi_lesion:
         loss = torch.sum(
             torch.round(is_lesion_on_slice).unsqueeze(-1).unsqueeze(-1)
             * torch.abs(dwi_input - output_adc_2_dwi)
-        ) / (torch.sum((shape[2] ** 2 * torch.sum((is_lesion_on_slice)))) + 1e-6)
+        ) / (torch.sum((shape[2] ** 2 * torch.sum((is_lesion_on_slice)))) + 1e-5)
         return loss
 
 
@@ -617,6 +618,9 @@ for epoch in range(N_epochs):
     mynet.mean_dice_isles.append(
         ((torch.tensor(mynet.Dice_isles)) / len(mynet.test_dataloader)).detach().cpu()
     )
+    mynet.mean_F1.append(
+        ((torch.tensor(mynet.F1)) / len(mynet.test_dataloader)).detach().cpu()
+    )
     mynet.mean_recall.append(
         ((torch.tensor(mynet.Recall)) / len(mynet.test_dataloader)).detach().cpu()
     )
@@ -632,10 +636,19 @@ for epoch in range(N_epochs):
 
     writer.add_scalar("Loss/epoch", running_loss / len(mynet.train_dataloader), epoch)
     writer.add_scalar(
-        "Dice/epoch",
+        "Dice",
         (torch.tensor(mynet.Dice) / len(mynet.test_dataloader)).detach().cpu(),
         epoch,
     )
+    writer.add_scalar(
+        "F1",
+        (torch.tensor(mynet.F1) / len(mynet.test_dataloader)).detach().cpu(),
+        epoch,
+    )
+    writer.add_image("DWI", dwi_input[23][0], global_step=0)
+    writer.add_image("gt", segmentation_mask[23][0], global_step=0)
+    writer.add_image("prediction", output[23][0], global_step=0)
+
     writer.close()
 
     if mynet.mean_dice_isles[-1] > mynet.max_mean_dice:
@@ -760,6 +773,7 @@ for epoch in range(N_epochs):
         print("saved weights")
 
     mynet.Dice = 0
+    mynet.F1 = 0
     mynet.Dice_isles = 0
     mynet.Recall = 0
     mynet.Spec = 0

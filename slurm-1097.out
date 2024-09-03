@@ -1,0 +1,16 @@
+/home/nadja/.conda/envs/stroke/lib/python3.10/site-packages/torchvision/io/image.py:13: UserWarning: Failed to load image Python extension: '/home/nadja/.conda/envs/stroke/lib/python3.10/site-packages/torchvision/image.so: undefined symbol: _ZNK3c107SymBool10guard_boolEPKcl'If you don't plan on using image functionality from `torchvision.io`, you can ignore this warning. Otherwise, there might be something wrong with your environment. Did you have `libjpeg` or `libpng` installed before building `torchvision` from source?
+  warn(
+/home/nadja/Stroke/code/run.py:29: DeprecationWarning: Please use `label` from the `scipy.ndimage` namespace, the `scipy.ndimage.measurements` namespace is deprecated.
+  from scipy.ndimage.measurements import label
+/home/nadja/.conda/envs/stroke/lib/python3.10/site-packages/torch/nn/functional.py:1967: UserWarning: nn.functional.sigmoid is deprecated. Use torch.sigmoid instead.
+  warnings.warn("nn.functional.sigmoid is deprecated. Use torch.sigmoid instead.")
+Traceback (most recent call last):
+  File "/home/nadja/Stroke/code/run.py", line 611, in <module>
+    mynet.evaluate(segmentation_mask.to(mynet.device), output)
+  File "/home/nadja/Stroke/code/run.py", line 367, in evaluate
+    F1 = compute_lesion_f1_score(segmentation_mask, output)
+  File "/home/nadja/Stroke/code/eval_utils.py", line 162, in compute_lesion_f1_score
+    ground_truth = np.asarray(ground_truth).astype(np.bool)
+  File "/home/nadja/.conda/envs/stroke/lib/python3.10/site-packages/torch/_tensor.py", line 956, in __array__
+    return self.numpy()
+TypeError: can't convert cuda:0 device type tensor to numpy. Use Tensor.cpu() to copy the tensor to host memory first.

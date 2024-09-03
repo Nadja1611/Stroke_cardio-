@@ -3,6 +3,8 @@
 /home/nadja/Stroke/code/run.py:29: DeprecationWarning: Please use `label` from the `scipy.ndimage` namespace, the `scipy.ndimage.measurements` namespace is deprecated.
   from scipy.ndimage.measurements import label
 Traceback (most recent call last):
-  File "/home/nadja/Stroke/code/run.py", line 34, in <module>
-    from dataset import *
-ModuleNotFoundError: No module named 'dataset'
+  File "/home/nadja/Stroke/code/run.py", line 35, in <module>
+    from eval_utils import compute_lesion_f1_score
+  File "/home/nadja/Stroke/code/eval_utils.py", line 5, in <module>
+    import cc3d
+ModuleNotFoundError: No module named 'cc3d'
