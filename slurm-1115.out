@@ -1,0 +1,19 @@
+/home/nadja/.conda/envs/stroke/lib/python3.10/site-packages/torchvision/io/image.py:13: UserWarning: Failed to load image Python extension: '/home/nadja/.conda/envs/stroke/lib/python3.10/site-packages/torchvision/image.so: undefined symbol: _ZNK3c107SymBool10guard_boolEPKcl'If you don't plan on using image functionality from `torchvision.io`, you can ignore this warning. Otherwise, there might be something wrong with your environment. Did you have `libjpeg` or `libpng` installed before building `torchvision` from source?
+  warn(
+/home/nadja/Stroke/code/run.py:29: DeprecationWarning: Please use `label` from the `scipy.ndimage` namespace, the `scipy.ndimage.measurements` namespace is deprecated.
+  from scipy.ndimage.measurements import label
+/home/nadja/.conda/envs/stroke/lib/python3.10/site-packages/torch/nn/functional.py:1967: UserWarning: nn.functional.sigmoid is deprecated. Use torch.sigmoid instead.
+  warnings.warn("nn.functional.sigmoid is deprecated. Use torch.sigmoid instead.")
+/home/nadja/Stroke/code/run.py:650: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.clone().detach() or sourceTensor.clone().detach().requires_grad_(True), rather than torch.tensor(sourceTensor).
+  ((torch.tensor(mynet.Dice)) / len(mynet.test_dataloader)).detach().cpu()
+/home/nadja/Stroke/code/run.py:659: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.clone().detach() or sourceTensor.clone().detach().requires_grad_(True), rather than torch.tensor(sourceTensor).
+  ((torch.tensor(mynet.Recall)) / len(mynet.test_dataloader)).detach().cpu()
+/home/nadja/Stroke/code/run.py:662: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.clone().detach() or sourceTensor.clone().detach().requires_grad_(True), rather than torch.tensor(sourceTensor).
+  ((torch.tensor(mynet.Spec)) / len(mynet.test_dataloader)).detach().cpu()
+/home/nadja/Stroke/code/run.py:665: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.clone().detach() or sourceTensor.clone().detach().requires_grad_(True), rather than torch.tensor(sourceTensor).
+  ((torch.tensor(mynet.FP)) // len(mynet.test_dataloader)).detach().cpu()
+/home/nadja/Stroke/code/run.py:668: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.clone().detach() or sourceTensor.clone().detach().requires_grad_(True), rather than torch.tensor(sourceTensor).
+  ((torch.tensor(mynet.FN)) / len(mynet.test_dataloader)).detach().cpu()
+/home/nadja/Stroke/code/run.py:674: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.clone().detach() or sourceTensor.clone().detach().requires_grad_(True), rather than torch.tensor(sourceTensor).
+  (torch.tensor(mynet.Dice) / len(mynet.test_dataloader)).detach().cpu(),
+slurmstepd-mp-gpu4-a100-2: error: *** JOB 1115 ON mp-gpu4-a100-2 CANCELLED AT 2024-09-03T12:08:43 ***

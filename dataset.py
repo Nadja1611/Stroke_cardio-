@@ -33,6 +33,5 @@ class StrokeDataset(Dataset):
         tensor[0] = (tensor[0] - torch.mean(tensor[0])) / (torch.std(tensor[0]) + 1e-5)
         tensor[1] = (tensor[1] - torch.mean(tensor[1])) / (torch.std(tensor[1]) + 1e-5)
         tensor[2] = torch.round(tensor[2])
-        print(torch.mean(tensor[0]))
-        print(torch.max(tensor[2]))
+
         return tensor

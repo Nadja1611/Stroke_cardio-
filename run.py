@@ -58,6 +58,29 @@ parser.add_argument(
     default=16,
 )
 parser.add_argument(
+    "-alpha",
+    "--alpha",
+    type=float,
+    help="weight between BCE and dice",
+    default=0.99,
+)
+
+parser.add_argument(
+    "-m",
+    "--method",
+    type=str,
+    help="which method do we use (baseline, joint,..)",
+    default="joint",
+)
+parser.add_argument(
+    "-in",
+    "--inputs",
+    type=str,
+    help="which inputs do we use (DWI, ADC, DWI-ADC,..)",
+    default="DWI,ADC,differences",
+)
+
+parser.add_argument(
     "-lr",
     "--learning_rate",
     type=float,
@@ -80,10 +103,21 @@ parser.add_argument(
 )
 
 args = parser.parse_args()
-writer = SummaryWriter(log_dir=args.logdir)
 
 """ explanation loss_variant"""
 ## combi        - combination of dice loss and balanced crossentropy loss
+
+
+# Example experiment names
+experiment_name = (
+    "/experiment_" + args.method + "_" + args.loss_variant + "_" + str(args.alpha)
+)
+tensorboard_dir = args.logdir + experiment_name
+try:
+    os.mkdir(tensorboard_dir)
+except:
+    pass
+writer = SummaryWriter(log_dir=tensorboard_dir)
 
 
 class UNet(nn.Module):
@@ -165,23 +199,24 @@ class Joint_reconstruction_and_segmentation_dwi_lesion:
         self.mean_FN = []
         self.Recall = 0
         self.mean_recall = []
-        self.learning_rate = 1e-4
+        self.learning_rate = 1e-5
         self.recon_weight = 0.5
         # self.alpha = 0.99
-        self.alpha = 0.99
+        self.alpha = args.alpha
         self.gamma = 0.5
         self.delta = 0.5
         self.weight = 0.001
         self.lesion_yes_no = []
         # self.inputs = "DWI"
-        self.dwi_2_adc_net = AutoEncoder(n_channels=1, n_classes=1).to(device)
-        self.optimizer_dwi_2_adc = optim.Adam(
-            self.dwi_2_adc_net.parameters(), lr=self.learning_rate
-        )
-        self.adc_2_dwi_net = AutoEncoder(n_channels=1, n_classes=1).to(device)
-        self.optimizer_adc_2_dwi = optim.Adam(
-            self.adc_2_dwi_net.parameters(), lr=self.learning_rate
-        )
+        if args.method == "joint":
+            self.dwi_2_adc_net = AutoEncoder(n_channels=1, n_classes=1).to(device)
+            self.optimizer_dwi_2_adc = optim.Adam(
+                self.dwi_2_adc_net.parameters(), lr=self.learning_rate
+            )
+            self.adc_2_dwi_net = AutoEncoder(n_channels=1, n_classes=1).to(device)
+            self.optimizer_adc_2_dwi = optim.Adam(
+                self.adc_2_dwi_net.parameters(), lr=self.learning_rate
+            )
         self.segmentation_net = UNet(n_channels=4, n_classes=1).to(device)
         self.optimizer = optim.Adam(
             self.segmentation_net.parameters(), lr=self.learning_rate
@@ -364,9 +399,9 @@ class Joint_reconstruction_and_segmentation_dwi_lesion:
         Spec = tn / (tn + fp)
         Dice = 2 * tp / (2 * tp + fn + fp)
         """ Compute f1 score as in isles paper """
-        F1 = compute_lesion_f1_score(
-            segmentation_mask[:, 0].detach().cpu(), output[:, 0].detach().cpu()
-        )
+        # F1 = compute_lesion_f1_score(
+        #    segmentation_mask[:, 0].detach().cpu(), output[:, 0].detach().cpu()
+        # )
 
         im1 = np.asarray(segmentation_mask.detach().cpu()).astype(bool)
         im2 = np.asarray(output.detach().cpu()).astype(bool)
@@ -385,7 +420,7 @@ class Joint_reconstruction_and_segmentation_dwi_lesion:
 
         self.Dice_isles += dice_isles
         self.Dice += Dice.detach().cpu()
-        self.F1 += F1
+        #  self.F1 += F1
         self.FP += fp.detach().cpu()
         self.FN += fn.detach().cpu()
         self.Recall += Recall
@@ -467,8 +502,9 @@ for epoch in range(N_epochs):
     # (N2NR.train_dataloader, desc='Epoch {}'.format(epoch)) as tepoch:
     for batch, data in enumerate(mynet.train_dataloader):
         mynet.segmentation_net.train()
-        mynet.dwi_2_adc_net.train()
-        mynet.adc_2_dwi_net.train()
+        if args.method == "joint":
+            mynet.dwi_2_adc_net.train()
+            mynet.adc_2_dwi_net.train()
 
         """ specify the inputs of the networks """
         dwi_input, adc_input, segmentation_mask = (
@@ -480,8 +516,9 @@ for epoch in range(N_epochs):
         # print(input_x.shape)
         mynet.optimizer.zero_grad()
         # initialize optim for dwi to adc nw
-        mynet.optimizer_dwi_2_adc.zero_grad()
-        mynet.optimizer_adc_2_dwi.zero_grad()
+        if args.method == "joint":
+            mynet.optimizer_dwi_2_adc.zero_grad()
+            mynet.optimizer_adc_2_dwi.zero_grad()
 
         # gt for segmentation
         # gt for ADC to dwi nw training
@@ -515,49 +552,54 @@ for epoch in range(N_epochs):
         )
 
         #### if there are lesions on at least one slice################
-        if torch.max(torch.round(is_lesion_on_slice)) > 0:
-            loss_reco = mynet.DWI2ADC_loss_only_difference(
-                adc_input, output_dwi_2_adc, is_lesion_on_slice
-            )
-            loss_reco2 = mynet.ADC2DWI_loss_only_difference(
-                dwi_input, output_adc_2_dwi, is_lesion_on_slice
-            )
-            #############----deep supervision----##################
-            loss_reco_ds1 = mynet.DWI2ADC_loss_only_difference(
-                F.avg_pool2d(adc_input, (8, 8)), ds1_adc, is_lesion_on_slice
-            )
-            loss_reco2_ds1 = mynet.ADC2DWI_loss_only_difference(
-                F.avg_pool2d(dwi_input, (8, 8)), ds1_dwi, is_lesion_on_slice
-            )
+        if args.method == "joint":
+            if torch.max(torch.round(is_lesion_on_slice)) > 0:
+                loss_reco = mynet.DWI2ADC_loss_only_difference(
+                    adc_input, output_dwi_2_adc, is_lesion_on_slice
+                )
+                loss_reco2 = mynet.ADC2DWI_loss_only_difference(
+                    dwi_input, output_adc_2_dwi, is_lesion_on_slice
+                )
+                #############----deep supervision----##################
+                loss_reco_ds1 = mynet.DWI2ADC_loss_only_difference(
+                    F.avg_pool2d(adc_input, (8, 8)), ds1_adc, is_lesion_on_slice
+                )
+                loss_reco2_ds1 = mynet.ADC2DWI_loss_only_difference(
+                    F.avg_pool2d(dwi_input, (8, 8)), ds1_dwi, is_lesion_on_slice
+                )
 
-            loss_reco_ds2 = mynet.DWI2ADC_loss_only_difference(
-                F.avg_pool2d(adc_input, (4, 4)), ds2_adc, is_lesion_on_slice
-            )
-            loss_reco2_ds2 = mynet.ADC2DWI_loss_only_difference(
-                F.avg_pool2d(dwi_input, (4, 4)), ds2_dwi, is_lesion_on_slice
-            )
+                loss_reco_ds2 = mynet.DWI2ADC_loss_only_difference(
+                    F.avg_pool2d(adc_input, (4, 4)), ds2_adc, is_lesion_on_slice
+                )
+                loss_reco2_ds2 = mynet.ADC2DWI_loss_only_difference(
+                    F.avg_pool2d(dwi_input, (4, 4)), ds2_dwi, is_lesion_on_slice
+                )
 
-            loss_reco_ds3 = mynet.DWI2ADC_loss_only_difference(
-                F.avg_pool2d(adc_input, (2, 2)), ds3_adc, is_lesion_on_slice
-            )
-            loss_reco2_ds3 = mynet.ADC2DWI_loss_only_difference(
-                F.avg_pool2d(dwi_input, (2, 2)), ds3_dwi, is_lesion_on_slice
-            )
+                loss_reco_ds3 = mynet.DWI2ADC_loss_only_difference(
+                    F.avg_pool2d(adc_input, (2, 2)), ds3_adc, is_lesion_on_slice
+                )
+                loss_reco2_ds3 = mynet.ADC2DWI_loss_only_difference(
+                    F.avg_pool2d(dwi_input, (2, 2)), ds3_dwi, is_lesion_on_slice
+                )
 
-            loss_total = loss_seg + 0.5 * (
-                loss_reco2
-                + loss_reco
-                + 0.125 * loss_reco_ds1
-                + 0.125 * loss_reco2_ds1
-                + 0.25 * loss_reco_ds2
-                + 0.25 * loss_reco2_ds2
-                + 0.5 * loss_reco_ds3
-                + 0.5 * loss_reco2_ds3
-            )
-            loss_total.backward()
-            mynet.optimizer.step()
-            mynet.optimizer_dwi_2_adc.step()
-            mynet.optimizer_adc_2_dwi.step()
+                loss_total = loss_seg + 0.5 * (
+                    loss_reco2
+                    + loss_reco
+                    + 0.125 * loss_reco_ds1
+                    + 0.125 * loss_reco2_ds1
+                    + 0.25 * loss_reco_ds2
+                    + 0.25 * loss_reco2_ds2
+                    + 0.5 * loss_reco_ds3
+                    + 0.5 * loss_reco2_ds3
+                )
+                loss_total.backward()
+                mynet.optimizer.step()
+                mynet.optimizer_dwi_2_adc.step()
+                mynet.optimizer_adc_2_dwi.step()
+            else:
+                loss_total = loss_seg
+                loss_total.backward()
+                mynet.optimizer.step()
 
         else:
             loss_total = loss_seg
@@ -580,8 +622,9 @@ for epoch in range(N_epochs):
 
     with torch.no_grad():
         mynet.segmentation_net.eval()
-        mynet.dwi_2_adc_net.eval()
-        mynet.adc_2_dwi_net.eval()
+        if args.method == "joint":
+            mynet.dwi_2_adc_net.eval()
+            mynet.adc_2_dwi_net.eval()
         for features in mynet.test_dataloader:
             if mynet.inputs == "DWI + ADC + DWI_ADC":
                 dwi_input, adc_input, segmentation_mask = (
@@ -589,12 +632,13 @@ for epoch in range(N_epochs):
                     data[:, 1:2, :, :, 0].to(mynet.device),
                     data[:, 2:3, :, :, 0].to(mynet.device),
                 )
-            output_dwi_2_adc, ds1_adc, ds2_adc, ds3_adc = mynet.dwi_2_adc_net(
-                dwi_input.float().to(mynet.device)
-            )
-            output_adc_2_dwi, ds1_dwi, ds2_dwi, ds3_dwi = mynet.adc_2_dwi_net(
-                adc_input.float().to(mynet.device)
-            )
+            if args.method == "joint":
+                output_dwi_2_adc, ds1_adc, ds2_adc, ds3_adc = mynet.dwi_2_adc_net(
+                    dwi_input.float().to(mynet.device)
+                )
+                output_adc_2_dwi, ds1_dwi, ds2_dwi, ds3_dwi = mynet.adc_2_dwi_net(
+                    adc_input.float().to(mynet.device)
+                )
             output, output1, output2, output3 = mynet.segmentation_net(
                 torch.cat(
                     [
@@ -618,9 +662,9 @@ for epoch in range(N_epochs):
     mynet.mean_dice_isles.append(
         ((torch.tensor(mynet.Dice_isles)) / len(mynet.test_dataloader)).detach().cpu()
     )
-    mynet.mean_F1.append(
-        ((torch.tensor(mynet.F1)) / len(mynet.test_dataloader)).detach().cpu()
-    )
+    # mynet.mean_F1.append(
+    #   ((torch.tensor(mynet.F1)) / len(mynet.test_dataloader)).detach().cpu()
+    # )
     mynet.mean_recall.append(
         ((torch.tensor(mynet.Recall)) / len(mynet.test_dataloader)).detach().cpu()
     )
@@ -640,21 +684,20 @@ for epoch in range(N_epochs):
         (torch.tensor(mynet.Dice) / len(mynet.test_dataloader)).detach().cpu(),
         epoch,
     )
-    writer.add_scalar(
-        "F1",
-        (torch.tensor(mynet.F1) / len(mynet.test_dataloader)).detach().cpu(),
-        epoch,
-    )
-    writer.add_image("DWI", dwi_input[2][:], global_step=0)
-    writer.add_image("gt", segmentation_mask[2][:], global_step=0)
-    writer.add_image("prediction", output[2][:], global_step=0)
-    writer.add_image(
-        "DWI-DWI_gt",
-        torch.abs(output_adc_2_dwi - dwi_input.float()).detach().cpu()[2],
-        global_step=0,
-    )
 
     writer.close()
+    plt.subplot(2, 2, 1)
+    plt.imshow(dwi_input[2][0].detach().cpu(), cmap="gray")
+    plt.subplot(2, 2, 2)
+    plt.imshow(segmentation_mask[2][0].detach().cpu(), cmap="gray")
+    plt.subplot(2, 2, 3)
+    plt.imshow(output[2][0].detach().cpu(), cmap="gray")
+    plt.subplot(2, 2, 4)
+    plt.imshow(
+        torch.abs(output_adc_2_dwi - dwi_input.float()).detach().cpu()[2][0],
+        cmap="gray",
+    )
+    plt.savefig("/home/nadja/Stroke/images/output" + str(epoch) + ".png")
 
     if mynet.mean_dice_isles[-1] > mynet.max_mean_dice:
         mynet.max_mean_dice = mynet.mean_dice_isles[-1]
